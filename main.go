@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"math/rand"
+	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,7 +18,41 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func performChaosTest(clientSet *kubernetes.Clientset, namespace string) {
+	podsNginxChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "app=chaos-engineering-nginx",
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), namespace)
+	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
+		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
+		//clientSet.CoreV1().Pods("chaos-engineering-test").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+	}
+
+	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
+			rand.Seed(time.Now().UnixNano())
+			randomIndex := rand.Intn(len(podsNginxChaosEngineeringNamespace.Items))
+			podToDelete := podsNginxChaosEngineeringNamespace.Items[randomIndex]
+			fmt.Printf("Deleting pod %s in namespace %s\n", podToDelete.Name, podToDelete.Namespace)
+			err := clientSet.CoreV1().Pods(podToDelete.Namespace).Delete(context.TODO(), podToDelete.Name, metav1.DeleteOptions{})
+			if err != nil {
+				panic(err.Error())
+			}
+			fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
+		} else {
+			fmt.Println("No pods found to delete")
+		}
+}
+
 func main() {
+
+	// Flags
+	intervalBetweenChaosTest := flag.Int("interval", 60, "Interval between chaos tests in seconds")
+	flag.Parse()
+	fmt.Printf("Interval between chaos tests: %d seconds\n", *intervalBetweenChaosTest)
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic("could not determine home directory")
@@ -126,28 +161,17 @@ func main() {
 		fmt.Printf("Created deployment %q.\n", deploymentNginx.Name)
 	}
 
-	podsNginxChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "app=chaos-engineering-nginx",
-	})
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), chaosEngineeringNamespaceName)
-	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
-		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
-		//clientSet.CoreV1().Pods("chaos-engineering-test").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-	}
-	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
-		rand.Seed(time.Now().UnixNano())
-		randomIndex := rand.Intn(len(podsNginxChaosEngineeringNamespace.Items))
-		podToDelete := podsNginxChaosEngineeringNamespace.Items[randomIndex]
-		fmt.Printf("Deleting pod %s in namespace %s\n", podToDelete.Name, podToDelete.Namespace)
-		err := clientSet.CoreV1().Pods(podToDelete.Namespace).Delete(context.TODO(), podToDelete.Name, metav1.DeleteOptions{})
-		if err != nil {
-            panic(err.Error())
-        }
-        fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
-	} else {
-        fmt.Println("No pods found to delete")
+	fmt.Printf("Starting chaos tests every %d seconds...\n", *intervalBetweenChaosTest)
+
+	//ticker is a clock that ticks at regular intervals
+	ticker := time.NewTicker(time.Duration(*intervalBetweenChaosTest) * time.Second)
+	//Ensures the ticker is stopped when the program exits
+	defer ticker.Stop()
+	
+	performChaosTest(clientSet, chaosEngineeringNamespaceName)
+
+	// ticker.C is a channel that receives a signal every time the ticker ticks, Repeat until program is terminated
+	for range ticker.C {
+        performChaosTest(clientSet, chaosEngineeringNamespaceName)
     }
 }
