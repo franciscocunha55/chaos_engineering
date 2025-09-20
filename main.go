@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"math/rand"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	apiv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 )
 
 func main() {
@@ -63,14 +68,86 @@ func main() {
 		}
 	}
 
-	podsChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/name=postgresql",
+	
+	deploymentsList, err := clientSet.AppsV1().Deployments(chaosEngineeringNamespaceName).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	deploymentNginxExists := false
+	for _, deploy := range deploymentsList.Items {
+		if deploy.Name == "chaos-engineering-nginx" {
+			deploymentNginxExists = true
+			break
+		}
+	}
+	if deploymentNginxExists {
+		fmt.Printf("Deployment chaos-engineering-nginx already exists in %s namespace, skipping creation \n", chaosEngineeringNamespaceName)
+	}else {
+		fmt.Printf("Creating deployment chaos-engineering-nginx in %s namespace \n", chaosEngineeringNamespaceName)
+		deploymentNginxDeclaration := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "chaos-engineering-nginx",
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To[int32](3),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "chaos-engineering-nginx",
+					},
+				},
+				Template: apiv1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app": "chaos-engineering-nginx",
+						},
+					},
+					Spec: apiv1.PodSpec{
+						Containers: []apiv1.Container{
+							{
+								Name:  "web",
+								Image: "nginx:1.12",
+								Ports: []apiv1.ContainerPort{
+									{
+										Name:          "http",
+										Protocol:      apiv1.ProtocolTCP,
+										ContainerPort: 80,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		deploymentNginx, err := clientSet.AppsV1().Deployments(chaosEngineeringNamespaceName).Create(context.TODO(), deploymentNginxDeclaration, metav1.CreateOptions{})
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("Created deployment %q.\n", deploymentNginx.Name)
+	}
+
+	podsNginxChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "app=chaos-engineering-nginx",
 	})
 	if err != nil {
 		panic(err.Error())
 	}
-	fmt.Printf("Found %d pods in %s namespace:\n", len(podsChaosEngineeringNamespace.Items), chaosEngineeringNamespaceName)
-	for _, pod := range podsChaosEngineeringNamespace.Items {
+	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), chaosEngineeringNamespaceName)
+	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
 		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
+		//clientSet.CoreV1().Pods("chaos-engineering-test").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	}
+	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
+		rand.Seed(time.Now().UnixNano())
+		randomIndex := rand.Intn(len(podsNginxChaosEngineeringNamespace.Items))
+		podToDelete := podsNginxChaosEngineeringNamespace.Items[randomIndex]
+		fmt.Printf("Deleting pod %s in namespace %s\n", podToDelete.Name, podToDelete.Namespace)
+		err := clientSet.CoreV1().Pods(podToDelete.Namespace).Delete(context.TODO(), podToDelete.Name, metav1.DeleteOptions{})
+		if err != nil {
+            panic(err.Error())
+        }
+        fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
+	} else {
+        fmt.Println("No pods found to delete")
+    }
 }
