@@ -130,9 +130,9 @@ func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
                             },
 							{
                                 Name:  "stress-ng",
-                                Image: "ubuntu:20.04",
+                                Image: "ubuntu:22.04",
                                 Command: []string{"sh"},
-                                Args: []string{"-c", "apt-get update && apt-get install -y stress-ng && stress-ng --cpu 1 --timeout 600"},
+                                Args: []string{"-c", "apt-get update && apt-get install -y stress-ng && stress-ng --cpu 3 --timeout 600"},
                             },
                         },
                     },
