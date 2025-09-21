@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math/rand"
+	//"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -56,7 +56,7 @@ func listNamespaces(clientSet *kubernetes.Clientset) *apiv1.NamespaceList{
 	return namespacesList
 }
 
-func createNaemespace(clientSet *kubernetes.Clientset, namespaceName string, namespacesList *apiv1.NamespaceList) {
+func createNamespace(clientSet *kubernetes.Clientset, namespaceName string, namespacesList *apiv1.NamespaceList) {
 	namespaceExists := false
 	for _, ns := range namespacesList.Items {
 		if ns.Name == namespaceName {
@@ -80,7 +80,7 @@ func createNaemespace(clientSet *kubernetes.Clientset, namespaceName string, nam
 	}
 }
 
-func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, deploymentName string, ) {
+func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, deploymentName string) {
     deploymentsList, err := clientSet.AppsV1().Deployments(namespaceName).List(context.TODO(), metav1.ListOptions{})
     if err != nil {
         panic(err.Error())
@@ -118,7 +118,7 @@ func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
                     Spec: apiv1.PodSpec{
                         Containers: []apiv1.Container{
                             {
-                                Name:  "web",
+                                Name:  "nginx",
                                 Image: "nginx:1.12",
                                 Ports: []apiv1.ContainerPort{
                                     {
@@ -127,6 +127,12 @@ func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
                                         ContainerPort: 80,
                                     },
                                 },
+                            },
+							{
+                                Name:  "stress-ng",
+                                Image: "ubuntu:20.04",
+                                Command: []string{"sh"},
+                                Args: []string{"-c", "apt-get update && apt-get install -y stress-ng && stress-ng --cpu 1 --timeout 600"},
                             },
                         },
                     },
@@ -138,42 +144,43 @@ func createDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
             panic(err.Error())
         }
         fmt.Printf("Created deployment %q.\n", deploymentNginx.Name)
+		time.Sleep(10 * time.Second) // Wait for pods to be created
     }
 }
 
-func performChaosTest(clientSet *kubernetes.Clientset, namespace string) {
-	podsNginxChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "app=chaos-engineering-nginx",
-	})
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), namespace)
-	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
-		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
-	}
+// func performChaosTest(clientSet *kubernetes.Clientset, namespace string) {
+// 	podsNginxChaosEngineeringNamespace, err:= clientSet.CoreV1().Pods("chaos-engineering-test").List(context.TODO(), metav1.ListOptions{
+// 		LabelSelector: "app=chaos-engineering-nginx",
+// 	})
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+// 	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), namespace)
+// 	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
+// 		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
+// 	}
 
-	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
-			rand.Seed(time.Now().UnixNano())
-			randomIndex := rand.Intn(len(podsNginxChaosEngineeringNamespace.Items))
-			podToDelete := podsNginxChaosEngineeringNamespace.Items[randomIndex]
-			fmt.Printf("Deleting pod %s in namespace %s\n", podToDelete.Name, podToDelete.Namespace)
-			err := clientSet.CoreV1().Pods(podToDelete.Namespace).Delete(context.TODO(), podToDelete.Name, metav1.DeleteOptions{})
-			if err != nil {
-				panic(err.Error())
-			}
-			fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
-			chaosPodsDeletedCounter.WithLabelValues(namespace).Inc()
-		} else {
-			fmt.Println("No pods found to delete")
-		}
-}
+// 	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
+// 			rand.Seed(time.Now().UnixNano())
+// 			randomIndex := rand.Intn(len(podsNginxChaosEngineeringNamespace.Items))
+// 			podToDelete := podsNginxChaosEngineeringNamespace.Items[randomIndex]
+// 			fmt.Printf("Deleting pod %s in namespace %s\n", podToDelete.Name, podToDelete.Namespace)
+// 			err := clientSet.CoreV1().Pods(podToDelete.Namespace).Delete(context.TODO(), podToDelete.Name, metav1.DeleteOptions{})
+// 			if err != nil {
+// 				panic(err.Error())
+// 			}
+// 			fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
+// 			chaosPodsDeletedCounter.WithLabelValues(namespace).Inc()
+// 		} else {
+// 			fmt.Println("No pods found to delete")
+// 		}
+// }
 
 
 func main() {
 
 	// Flags
-	intervalBetweenChaosTest := flag.Int("interval", 60, "Interval between chaos tests in seconds")
+	intervalBetweenChaosTest := flag.Int("interval", 30, "Interval between chaos tests in seconds")
 	chaosEngineeringNamespaceName := flag.String("namespace", "chaos-engineering-test", "Namespace for chaos engineering tests")
 	flag.Parse()
 	fmt.Printf("Interval between chaos tests: %d seconds\n", *intervalBetweenChaosTest)
@@ -192,21 +199,21 @@ func main() {
 
 	namespacesList := listNamespaces(clientSet)
 
-	createNaemespace(clientSet, *chaosEngineeringNamespaceName, namespacesList)
+	createNamespace(clientSet, *chaosEngineeringNamespaceName, namespacesList)
 
 	createDeployment(clientSet, *chaosEngineeringNamespaceName, "chaos-engineering-nginx")
 
-	fmt.Printf("Starting chaos tests every %d seconds...\n", *intervalBetweenChaosTest)
+	// fmt.Printf("Starting chaos tests every %d seconds...\n", *intervalBetweenChaosTest)
 
-	//ticker is a clock that ticks at regular intervals
-	ticker := time.NewTicker(time.Duration(*intervalBetweenChaosTest) * time.Second)
-	//Ensures the ticker is stopped when the program exits
-	defer ticker.Stop()
+	// //ticker is a clock that ticks at regular intervals
+	// ticker := time.NewTicker(time.Duration(*intervalBetweenChaosTest) * time.Second)
+	// //Ensures the ticker is stopped when the program exits
+	// defer ticker.Stop()
 
-	performChaosTest(clientSet, *chaosEngineeringNamespaceName)
+	// performChaosTest(clientSet, *chaosEngineeringNamespaceName)
 
-	// ticker.C is a channel that receives a signal every time the ticker ticks, Repeat until program is terminated
-	for range ticker.C {
-        performChaosTest(clientSet, *chaosEngineeringNamespaceName)
-    }
+	// // ticker.C is a channel that receives a signal every time the ticker ticks, Repeat until program is terminated
+	// for range ticker.C {
+    //     performChaosTest(clientSet, *chaosEngineeringNamespaceName)
+    // }
 }
