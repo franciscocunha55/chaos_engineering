@@ -5,9 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -16,6 +20,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 )
+
+var chaosPodsDeletedCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "chaos_pods_deleted_total",
+		Help: "Total number of pods deleted by chaos engineering tests",
+	},
+	[]string{"namespace"},
+)
+
 
 //clientset to talk to core resources like Pods
 func getClientSet() (*kubernetes.Clientset, error) {
@@ -138,7 +151,6 @@ func performChaosTest(clientSet *kubernetes.Clientset, namespace string) {
 	fmt.Printf("Found %d pods in %s namespace:\n", len(podsNginxChaosEngineeringNamespace.Items), namespace)
 	for _, pod := range podsNginxChaosEngineeringNamespace.Items {
 		fmt.Printf("- [%s] %s\n", pod.Namespace, pod.Name)
-		//clientSet.CoreV1().Pods("chaos-engineering-test").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	}
 
 	if len(podsNginxChaosEngineeringNamespace.Items) > 0 {
@@ -151,6 +163,7 @@ func performChaosTest(clientSet *kubernetes.Clientset, namespace string) {
 				panic(err.Error())
 			}
 			fmt.Printf("Successfully deleted pod: %s\n", podToDelete.Name)
+			chaosPodsDeletedCounter.WithLabelValues(namespace).Inc()
 		} else {
 			fmt.Println("No pods found to delete")
 		}
@@ -164,6 +177,13 @@ func main() {
 	chaosEngineeringNamespaceName := flag.String("namespace", "chaos-engineering-test", "Namespace for chaos engineering tests")
 	flag.Parse()
 	fmt.Printf("Interval between chaos tests: %d seconds\n", *intervalBetweenChaosTest)
+
+	prometheus.MustRegister(chaosPodsDeletedCounter)
+	go func()  {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":8080", nil)
+	}()
+
 
 	clientSet, err := getClientSet()
 	if err != nil {
