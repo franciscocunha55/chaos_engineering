@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	metrics "github.com/franciscocunha55/chaos_engineering/pkg/metrics"
+    metrics "github.com/franciscocunha55/chaos_engineering/pkg/metrics"
 	
 	"k8s.io/client-go/kubernetes"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

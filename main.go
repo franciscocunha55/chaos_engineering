@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	chaos "github.com/franciscocunha55/chaos-engineering/pkg/chaos"
-	metrics "github.com/franciscocunha55/chaos-engineering/pkg/metrics"
+	chaos "github.com/franciscocunha55/chaos_engineering/pkg/chaos"
+    metrics "github.com/franciscocunha55/chaos_engineering/pkg/metrics"
+	k8s "github.com/franciscocunha55/chaos_engineering/pkg/k8s"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -35,7 +36,7 @@ func main() {
 	}()
 
 
-	clientSet, err := chaos.GetClientSet()
+	clientSet, err := k8s.GetClientSet()
 	if err != nil {
 		panic(err.Error())
 	}
@@ -53,7 +54,7 @@ func main() {
 	//Ensures the ticker is stopped when the program exits
 	defer ticker.Stop()
 
-	chaos.performChaosTest(clientSet, *chaosEngineeringNamespaceName)
+	chaos.PerformChaosTest(clientSet, *chaosEngineeringNamespaceName)
 
 	// ticker.C is a channel that receives a signal every time the ticker ticks, Repeat until program is terminated
 	for range ticker.C {
