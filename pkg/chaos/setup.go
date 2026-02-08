@@ -72,7 +72,7 @@ func CreateDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
                 Name: "chaos-engineering-nginx",
             },
             Spec: appsv1.DeploymentSpec{
-                Replicas: ptr.To[int32](3),
+                Replicas: ptr.To[int32](12),
                 Selector: &metav1.LabelSelector{
                     MatchLabels: map[string]string{
                         "app": deploymentName,
@@ -101,7 +101,7 @@ func CreateDeployment(clientSet *kubernetes.Clientset, namespaceName string, dep
                                 Name:  "stress-ng",
                                 Image: "ubuntu:22.04",
                                 Command: []string{"sh"},
-                                Args: []string{"-c", "apt-get update && apt-get install -y stress-ng && stress-ng --cpu 3 --timeout 600"},
+                                Args: []string{"-c", "apt-get update && apt-get install -y stress-ng && stress-ng --cpu 1 --timeout 600"},
                             },
                         },
                     },

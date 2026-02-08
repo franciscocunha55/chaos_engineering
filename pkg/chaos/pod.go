@@ -6,10 +6,11 @@ import (
 	"math/rand"
 	"time"
 
-    metrics "github.com/franciscocunha55/chaos_engineering/pkg/metrics"
-	
-	"k8s.io/client-go/kubernetes"
+	metrics "github.com/franciscocunha55/chaos_engineering/pkg/metrics"
+
+	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 
@@ -39,4 +40,17 @@ func PerformChaosTest(clientSet *kubernetes.Clientset, namespace string) {
 		} else {
 			fmt.Println("No pods found to delete")
 		}
+}
+
+func DeletePod(clientSet *kubernetes.Clientset, pod apiv1.Pod, dryRun bool) error{
+	if dryRun{
+		fmt.Printf("[DRY-RUN] Would delete pod %s in namespace %s\n", pod.Name, pod.Namespace)
+		return nil
+	}
+	err := clientSet.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+	if err != nil{
+		return fmt.Errorf("failed to delete pod %s: %w", pod.Name, err)
+	}
+	fmt.Printf("Successfully deleted pod: %s\n", pod.Name)
+	return nil
 }
